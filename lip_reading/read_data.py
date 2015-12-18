@@ -2,12 +2,13 @@ import os
 import os.path
 
 import scipy.io as matio
-import numpy
+import numpy as np
 
 import cv2 as cv
 
 
-def read_avletter(path):
+def read_avletter(path="./avletters/"):
+
 
 first_sequence = matio.loadmat('/Users/cfchen/Downloads/avletters/Lips/A1_Anya-lips.mat')
 index=0
