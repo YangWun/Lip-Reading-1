@@ -1,66 +1,144 @@
 import os
 import os.path
 import scipy.io as matio
-import cv2
+from keras.utils import np_utils
 import numpy as np
+import cv2
+import math
+def read_data(path = "./avletters/Lips/", test_split = 0.2, data_split = 1, seed=113):
+
+    filespath = []
+    height = 0
+    width = 0
+    seq_total_num = 0       # total slice number
+
+    label = []
+    #For each directory in the tree rooted at directory top (including top itself), it yields a 3-tuple (dirpath, dirnames, filenames)
+    for root, dirs, files in os.walk(path):
+        for name in files:
+            if not name.startswith("."):
+                filespath.append(root + name)
+                file = matio.loadmat(root + name)
+                seq_size = file['siz'][0]
+                seq_total_num += int(seq_size[2])
+
+                if height == 0:
+                    height = int(seq_size[0])
+                    width = int(seq_size[1])
+                if height > 0 and height != seq_size[0]:
+                    print 'image size should be equal'
+                    return 0
+
+                label += [(ord(name[0])-ord('A'))]*seq_size[2]
 
 
-def read_data(path_read):
-	index=0
-	a =  os.walk(path_read)
-	#For each directory in the tree rooted at directory top (including top itself), it yields a 3-tuple (dirpath, dirnames, filenames)
+    data = np.zeros((seq_total_num, 1, height, width))  #channel =1
 
-	height = -1
-	width = -1
-	num_sequence = 0
+    ind = 0
+    for item in filespath:
+        file = matio.loadmat(item)
+        seq_size = file['siz'][0]
+        temp_data = file['vid']
+        seq_num = int(seq_size[2])
+        # store every slice into an array
+        for slice_ind in range(seq_num):
+            slice = temp_data[:, slice_ind]
+            slice = slice.reshape((width, height))
+            data[ind, 0, :, :] = np.transpose(slice)
+            ind += 1
 
-	for i in a:
-		for file_name in i[2]:
-			if file_name[0]=="." or file_name[0]=="#":
-				continue
-			this_file = path_read+file_name
-			this_video = matio.loadmat(this_file)
-			img_size = this_video['siz'][0]
-			num_sequence += int (img_size[2])
-			if height <0 and width <0:
-				height = int (img_size[0])
-				width = int (img_size[1])
-			if (height >0 and height != img_size[0]) or (width >0 and width != img_size[1]):
-				print ('image size should be equal'+'\n')
-				return 0
 
-	data_out = np.zeros((num_sequence,height,width))
 
-	b =  os.walk(path_read)
-	for j in b:
-		for file_name in j[2]:								#process every video sequence in the folder
-			if file_name[0]=="." or file_name[0]=="#":
-				continue
-			this_file = path_read+file_name
-			this_video = matio.loadmat(this_file)
-			temp_data = this_video['vid']
-			img_size = this_video['siz'][0]
-			for slice_index in range(int(img_size[2])):		#process every slice in the video sequence
-				ttt = temp_data[:,slice_index]
-				ttt = ttt.reshape((width,height))
-				kk = np.transpose(ttt)						# for data imported from matlab we need to transpose the matrix
-				data_out[slice_index,:,:] = kk
-				# cv2.namedWindow("test",0)
-				# cv2.imshow("test",kk)
-				# cv2.waitKey()
-				# cv2.destroyWindow("test")
+    data = data.astype('float32')
+    data /= 255
 
-	#assign 'vid' element in "dict" structure to data
-	# # first_img = data_out[:,1]
-	# # first_img = first_img.reshape((80,60))
-	# # first_img = np.transpose(first_img)
-    # #
-    # #
-    # #
-    # #
-    # #
-	# # cv2.namedWindow("test",0)
-	# # cv2.imshow("test",first_img)
-	# # cv2.waitKey()
-	# # cv2.destroyWindow("test")
-	return data_out
+    np.random.seed(seed)
+    np.random.shuffle(data)
+    np.random.seed(seed)
+    np.random.shuffle(label)
+
+    l = int(len(data) * data_split)
+    tl = int(l * (1 - test_split))
+
+    X_train = data[:tl, :, :, :]
+    Y_train = label[:tl]
+
+    X_test = data[tl:l, :, :, :]
+    Y_test = label[tl:l]
+
+    # convert class vectors to binary class matrices
+    Y_train = np_utils.to_categorical(Y_train, 26)
+    Y_test = np_utils.to_categorical(Y_test, 26)
+
+    return (X_train, Y_train), (X_test, Y_test)
+
+def read_data_sequence(path = "./avletters/Lips/", test_split = 0.2, data_split = 1, sampling_step=3,seed = 113):
+    filespath = []
+    height = 0
+    width = 0
+    seq_total_num = 0       # total slice number
+    label = []
+    max_len = 0
+    #For each directory in the tree rooted at directory top (including top itself), it yields a 3-tuple (dirpath, dirnames, filenames)
+    for root, dirs, files in os.walk(path):
+        for name in files:
+            if not name.startswith("."):
+                filespath.append(root + name)
+                file = matio.loadmat(root + name)
+                seq_size = file['siz'][0]
+                if seq_size[2]>max_len:
+                    max_len = seq_size[2]
+                seq_total_num += sampling_step
+
+                if height == 0:
+                    height = int(seq_size[0])
+                    width = int(seq_size[1])
+                if height > 0 and height != seq_size[0]:
+                    print 'image size should be equal'
+                    return 0
+                label += [(ord(name[0])-ord('A'))]*sampling_step
+
+    data = np.zeros((seq_total_num,int(max_len/sampling_step)+1, height, width))
+
+    # cv2.namedWindow('test')
+    sample_index = 0
+    for item in filespath:
+        file = matio.loadmat(item)
+        seq_size = file['siz'][0]
+        temp_data = file['vid']
+        seq_length = int(seq_size[2])
+        # store every slice into an array
+        for step_i in range(sampling_step):
+            for slice_ind in range(int(max_len)):
+                if (slice_ind*sampling_step+step_i) <seq_length:
+                    slice = temp_data[:, slice_ind*sampling_step+step_i]
+                    slice = slice.reshape((width, height))
+                    data[sample_index, slice_ind, :, :] = np.transpose(slice)
+                    # cv2.imshow('test',data[sample_index, slice_ind, :, :]/255)
+                    # print "sample_index=", sample_index, ";", "slice_ind=", slice_ind, \
+                    #     "label=", label[sample_index], "\n"
+                    #
+                    # cv2.waitKey()
+            sample_index+=1
+
+
+    data = data.astype('float32')
+    data /= 255
+
+    np.random.seed(seed)
+    np.random.shuffle(data)
+    np.random.seed(seed)
+    np.random.shuffle(label)
+
+    l = int(len(data) * data_split)
+    tl = int(l * (1 - test_split))
+
+    X_train = data[:tl, :, :, :]
+    Y_train = label[:tl]
+
+    X_test = data[tl:l, :, :, :]
+    Y_test = label[tl:l]
+    Y_train = np_utils.to_categorical(Y_train, 26)
+    Y_test = np_utils.to_categorical(Y_test, 26)
+
+    return (X_train, Y_train), (X_test, Y_test)
