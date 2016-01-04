@@ -24,8 +24,8 @@ from theano.tensor.signal import downsample
 import numpy as np
 
 from .. import activations, initializations, regularizers, constraints
-#from ..utils.theano_utils import shared_zeros, floatX, on_gpu
 from .. import backend as K
+# from ..utils.theano_utils import shared_zeros, floatX, on_gpu
 from ..utils.generic_utils import make_tuple
 from ..regularizers import ActivityRegularizer, Regularizer
 
@@ -130,12 +130,12 @@ class TimeDistributedConvolution2D(Layer):
         self.constraints = [self.W_constraint, self.b_constraint]
 
         self.initial_weights = weights
+
+        self.input = K.placeholder(ndim=5)
         super(TimeDistributedConvolution2D,self).__init__(**kwargs)
 
     def build(self):
         stack_size = self.input_shape[2]
-        dtensor5 = T.TensorType('float32', (False,)*5)
-        self.input = dtensor5()
         self.W_shape = (self.nb_filter, stack_size, self.nb_row, self.nb_col)
         self.W = self.init(self.W_shape)
         self.b = K.zeros((self.nb_filter,))
@@ -233,7 +233,7 @@ class TimeDistributedMaxPooling2D(Layer):
     def __init__(self, pool_size=(2, 2), stride=None, ignore_border=True, **kwargs):
         super(TimeDistributedMaxPooling2D,self).__init__(**kwargs)
         dtensor5 = T.TensorType('float32', (False,)*5)
-        self.input = dtensor5()
+        self.input = K.placeholder(ndim=5)
         self.pool_size = tuple(pool_size)
         if stride is None:
             stride = self.pool_size
